@@ -73,3 +73,56 @@ TEST_CASE("base64/base64_calculate_maximum_decoded_size", "[DECODE]")
 	REQUIRE(base64_calculate_maximum_decoded_size(4) == 3);
 	REQUIRE(base64_calculate_maximum_decoded_size(160) == 120);
 }
+
+TEST_CASE("base64/base64_decode", "[DECODE]")
+{
+	char decoded[2048];
+	size_t written;
+	int ret;
+
+	ret = base64_decode(base64_reference.c_str(), decoded, base64_reference.length(), lorem_ipsum.length(), &written);
+	REQUIRE(ret == 0);
+
+	REQUIRE(written == lorem_ipsum.length());
+
+	if (!ret) {
+		decoded[written] = 0;
+		REQUIRE(std::string(decoded) == lorem_ipsum);
+	}
+}
+
+TEST_CASE("base64/base64_decode/error_src_to_short", "[DECODE]")
+{
+	char decoded[2048];
+	size_t written;
+	int ret;
+
+	ret = base64_decode(base64_reference.c_str(), decoded, base64_reference.length() -1, sizeof(decoded), &written);
+	REQUIRE(ret == -1);
+	REQUIRE(written == 0);
+}
+
+TEST_CASE("base64/base64_decode/error_dest_to_short", "[DECODE]")
+{
+	char decoded[2048];
+	size_t written;
+	int ret;
+
+	ret = base64_decode(base64_reference.c_str(), decoded, base64_reference.length(), 12, &written);
+	REQUIRE(ret == -2);
+	REQUIRE(written == 0);
+}
+
+TEST_CASE("base64/base64_decode/invalid_char", "[DECODE]")
+{
+	char decoded[2048];
+	size_t written;
+	int ret;
+
+	std::string ref = base64_reference;
+	ref[12] = '!';
+
+	ret = base64_decode(ref.c_str(), decoded, ref.length(), 2048, &written);
+	REQUIRE(ret == -3);
+	REQUIRE(written == 9);
+}

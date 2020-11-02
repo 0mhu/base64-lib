@@ -11,6 +11,7 @@
 static bool base64_lib_initialized = false;
 
 static char LOOKUP_SECTION_ATTR base64_encode_table[64];
+static char LOOKUP_SECTION_ATTR base64_decode_table[256];
 
 static void initialize_encode_lookup_table(void)
 {
@@ -27,12 +28,23 @@ static void initialize_encode_lookup_table(void)
 	base64_encode_table[63] = '/';
 }
 
+static void initialize_decode_lookup_table(void)
+{
+	uint8_t i;
+
+	for (i = 0; i < 64; i++) {
+		base64_decode_table[(unsigned int)base64_encode_table[i]] = (char)i;
+	}
+	base64_decode_table[(unsigned int)'='] = '\0';
+}
+
 static void base64_init(void)
 {
 	if (base64_lib_initialized)
 		return;
 
 	initialize_encode_lookup_table();
+	initialize_decode_lookup_table();
 
 	base64_lib_initialized = true;
 }
@@ -102,4 +114,120 @@ size_t base64_calculate_maximum_decoded_size(size_t encoded_size)
 	if (encoded_size % 4)
 		return 0;
 	return encoded_size / 4 * 3;
+}
+
+/**
+ * @brief This function checks, if a char is a valid character for base64 encoded data
+ * @note This function treats the padding '=' as an invalid character
+ */
+static bool is_valid_base64_character(char c)
+{
+	bool ret;
+
+	switch (c) {
+	case 'A' ... 'Z': /* FALLTHRU */
+	case 'a' ... 'z': /* FALLTHRU */
+	case '0' ... '9': /* FALLTHRU */
+	case '+': /* FALLTHRU */
+	case '/':
+		ret = true;
+		break;
+	default:
+		ret = false;
+		break;
+	}
+
+	return ret;
+}
+
+static inline uint32_t base64_chars_to_three_bytes(char a, char b, char c, char d)
+{
+	return	((((uint32_t)base64_decode_table[(unsigned int)a] & 0x3F) << 18) ) |
+			((((uint32_t)base64_decode_table[(unsigned int)b] & 0x3F) << 12)) |
+			((((uint32_t)base64_decode_table[(unsigned int)c] & 0x3F) << 6)) |
+			((((uint32_t)base64_decode_table[(unsigned int)d] & 0x3F)));
+}
+
+int base64_decode(const char *base64_src, char *dest, size_t src_size, size_t dest_size, size_t *output_written)
+{
+	size_t output_len;
+	size_t idx;
+	char first, second, third, fourth;
+	uint32_t three_bytes;
+	bool padded = false;
+	size_t written = 0;
+	int ret = 0;
+
+	if (!base64_src || !dest || !src_size || !dest_size)
+		return -1000;
+
+	output_len = base64_calculate_maximum_decoded_size(src_size);
+	if (output_len == 0) {
+		ret = -1;
+		goto exit;
+	}
+
+	base64_init();
+
+	/* Check paddings and correct output length */
+	if (base64_src[src_size-1] == '=') {
+		padded = true;
+		output_len--;
+	}
+
+	if (base64_src[src_size-2] == '=') {
+		output_len--;
+		padded = true;
+	}
+
+	if (dest_size < output_len) {
+		ret = -2;
+		goto exit;
+	}
+
+	/* Convert all full quartetts */
+	for (idx = 0; idx < src_size - (padded ? 4 : 0);) {
+		/* Due to the call to base64_calculate_maximum_decoded_size(), it is guaranteed, that src_size is
+		 * a multiple of four characters */
+		first = base64_src[idx++];
+		second = base64_src[idx++];
+		third = base64_src[idx++];
+		fourth = base64_src[idx++];
+		if (is_valid_base64_character(first) &&
+		is_valid_base64_character(second) &&
+		is_valid_base64_character(third) &&
+		is_valid_base64_character(fourth)) {
+			three_bytes = base64_chars_to_three_bytes(first, second, third, fourth);
+			dest[written++] = (three_bytes >> 16) & 0xFF;
+			dest[written++] = (three_bytes >> 8) & 0xFF;
+			dest[written++] = (three_bytes) & 0xFF;
+		} else {
+			ret = -3;
+			goto exit;
+		}
+
+	}
+
+	if (padded) {
+		first = base64_src[idx++];
+		second = base64_src[idx++];
+		third = base64_src[idx++];
+		fourth = base64_src[idx++];
+		if (!is_valid_base64_character(first) || !is_valid_base64_character(second)) {
+			ret = -4;
+			goto exit;
+		}
+		three_bytes = base64_chars_to_three_bytes(first, second, third, fourth);
+		dest[written++] = (three_bytes >> 16) & 0xFF;
+		if (third != '=')
+			dest[written++] = (three_bytes >> 8) & 0xFF;
+		if (fourth != '=')
+			dest[written++] = (three_bytes) & 0xFF;
+	}
+
+exit:
+	if (output_written)
+		*output_written = written;
+
+	return ret;
 }
