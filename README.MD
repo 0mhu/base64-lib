@@ -7,3 +7,8 @@ If it is set, the lookup table will be moved to the section specified by the def
 ``#define BASE64_LOOKUP_TABLE_SECTION ".bss"``
 
 This project is licensed under GPLv2.
+
+## Build Instructions
+
+* Type ``make`` to build the static library object.
+* Type ``make execute-base64-test`` to build and run the tests
