@@ -9,6 +9,6 @@ If it is set, the lookup table will be moved to the section specified by the def
 This project is licensed under GPLv2.
 
 ## Build Instructions
-
+* Go to build directory and execute ``cmake <path to this library>``
 * Type ``make`` to build the static library object.
 * Type ``make execute-base64-test`` to build and run the tests
